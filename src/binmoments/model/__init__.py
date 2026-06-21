@@ -3,3 +3,8 @@
 See ADR-001 (measurement/channel model: tensor decomposition, magnitude-as-channel,
 linear/circular flag, rank scope) and ADR-007 (instrument registry & geodetic metadata).
 """
+
+from .channel import Channel, ChannelKind, Decomposition, decompose
+from .measurement import Measurement
+
+__all__ = ["Channel", "ChannelKind", "Decomposition", "decompose", "Measurement"]
