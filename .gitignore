@@ -1,0 +1,34 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Databricks ---
+.databricks/
+*.dbc
+
+# --- Config & secrets (ADR-011): keep templates, ignore real config ---
+config/*.yaml
+!config/*.example.yaml
+.env
+*.secret
+*.secrets
+
+# --- IDE ---
+.idea/
+*.iml
+
+# --- OS ---
+.DS_Store
+Thumbs.db

@@ -1,0 +1,52 @@
+# BinMoments instrument configuration TEMPLATE (ADR-011).
+#
+# Copy this file to  config/instruments.yaml  (which is git-ignored) and edit.
+# Secrets are NEVER stored here — they are referenced from the platform secret store
+# (Databricks secrets / Unity Catalog). If a required secret is missing, the pipeline
+# fails closed rather than running in an unsafe state.
+
+# ---------------------------------------------------------------------------
+# Type-level defaults. New instruments inherit their type (cold-start, ADR-003).
+# ---------------------------------------------------------------------------
+instrument_types:
+
+  ambient_temperature:
+    channels:
+      - name: temperature
+        rank: 0            # 0=scalar, 1=vector, 2=tensor (ADR-001; build is rank 0-1)
+        kind: linear       # linear | circular  (ADR-001)
+        unit: celsius
+
+    # Static value-band classification (ADR-017). Bands are [low, high) ranges.
+    bands:
+      nominal:  [18.0, 26.0]
+      elevated: [26.0, 32.0]
+      warning:  [32.0, 38.0]
+      critical: [38.0, .inf]
+
+    # Drift rules (ADR-005). A LIST — all rules run simultaneously per instrument.
+    # baseline: previous_hour | same_hour_yesterday | rolling_window(n) | historical_reference
+    # threshold: auto  -> self-calibrated against the instrument's own history.
+    drift_rules:
+      - baseline: previous_hour
+        metric: wasserstein
+        threshold: auto
+      - baseline: same_hour_yesterday   # the seasonality control (ADR-005)
+        metric: wasserstein
+        threshold: auto
+
+# ---------------------------------------------------------------------------
+# Instances. Per-instrument overrides may add/replace any field above.
+# ---------------------------------------------------------------------------
+instruments:
+
+  - id: TEMP-001
+    type: ambient_temperature
+    labels: [outdoor, demo]              # many-to-many classification (ADR-007)
+    location:                            # GEODETIC — datum + epoch are required (ADR-007)
+      latitude: -27.4698                 # Brisbane, QLD
+      longitude: 153.0251
+      height_m: 28.0
+      datum: WGS84
+      epoch: "2020.0"
+    sampling_per_hour: 60                # modest per-hour count (ADR-002)
