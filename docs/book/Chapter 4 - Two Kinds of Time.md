@@ -1,0 +1,40 @@
+# Chapter 4 — Two Kinds of Time
+
+*BinMoments — a listening companion. Written to be listened to, not studied. No diagrams, no code — just the idea.*
+
+
+## The trouble with "now"
+
+Here's a problem that sounds simple and isn't. You store a measurement. Later, you look it up. You'd think the answer is fixed — the past already happened, so surely the record of it is settled. But it isn't, and the reasons are completely ordinary. Sometimes data arrives late: a sensor loses its connection for a day, then reconnects and dumps everything it held, so readings about yesterday only reach you today. And sometimes data turns out to be wrong: a value was mis-recorded, and later it gets corrected. So the record of "what happened at two o'clock yesterday" can genuinely change after the fact — not because the past changed, but because your knowledge of it did.
+
+Now here's why that's dangerous. Imagine someone makes a decision based on a number your system showed them on Monday afternoon. On Wednesday, a correction arrives, and the number changes. On Friday, they come back and ask, "what was that value?" If your system just overwrote the old number with the corrected one — the obvious, naive thing to do — then you can no longer show them what they actually saw on Monday. You've destroyed the very thing they needed: proof of what was known at the moment they acted. The decision now looks wrong, or arbitrary, and there's no way to defend it. Overwriting is easy and it quietly erases history.
+
+## The key insight: two clocks, not one
+
+The fix begins with noticing that a single timestamp is secretly trying to answer two different questions at once. One question is: *what moment is this measurement about?* The reading describes two o'clock yesterday afternoon. Call that the valid time — when the thing was true in the world. The other question is completely different: *when did the system find out?* Maybe it learned about that two-o'clock reading at five past two, on time. Or maybe it learned about it a day later, when the sensor reconnected. Call that the transaction time — when the record entered the system's knowledge.
+
+These two clocks usually tick together — most readings are learned about the moment they happen — but they can drift apart, and when they do, the gap is exactly the information you need. A reading about two o'clock yesterday, learned today, is late data. A reading about two o'clock yesterday, learned at five past two but then restated on Wednesday, is a correction. Keep both clocks on every record, and suddenly you can answer questions you couldn't before. Lose either one — collapse them into a single "timestamp" — and you're back to overwriting and forgetting. This idea of keeping both times is what makes the store *bitemporal*: two times, always, on everything.
+
+## Never erase: just keep adding
+
+So the store follows one strict rule: it never changes or deletes anything. It only ever adds. Every time a reading is counted, the system writes a tiny new entry that says, in effect, "add one to this bucket, for this hour, and by the way, I learned this at this moment." That's it. The store is a growing pile of these little add-one notes, each stamped with both clocks — which hour it's about, and when it was recorded. Nothing is ever reached back into and altered. The pile only grows.
+
+That sounds almost too simple to be powerful, but watch what it buys you. Because every note carries the moment it was recorded, you can ask the store to *pretend it's any past moment* and replay only what it knew by then. Want to know what the picture looked like on Monday afternoon? Add up only the notes that had arrived by Monday afternoon — ignore everything stamped later. Want today's picture? Add up all of them. The same pile of notes can reconstruct the view from any instant in its history, just by choosing which notes to include. The past isn't stored as a frozen snapshot; it's *recoverable* on demand, because nothing that was ever true was ever thrown away.
+
+## Late data and corrections, handled the same way
+
+Late data falls out of this for free. A reading about an old hour that shows up today is just another add-one note — it carries the old hour as its valid time and today as its transaction time. Ask the store for what you knew yesterday, and that note isn't counted, because it hadn't arrived yet. Ask for today, and it is. The late reading enriches the present without disturbing the past. You didn't have to do anything special; the two clocks did the work.
+
+Corrections are the lovely part. How do you fix a wrong value without erasing it? You don't erase — you *compensate*. Say a reading was counted into the wrong bucket. To correct it, the system writes two new notes: one that says "subtract one from the wrong bucket," and one that says "add one to the right bucket," both stamped with the moment the correction was learned. The original note is still sitting there, untouched. Add everything up as of before the correction, and you see the old, wrong picture — exactly what someone saw when they made their decision. Add everything up as of after, and the minus-one and plus-one have quietly moved the count to where it belongs. The correction is fully applied going forward and fully invisible looking backward, and the whole history of "what we believed and when" is preserved in the pile.
+
+I find the little story makes it vivid. A reading lands in bucket four on Monday, and someone makes a call based on it. On Wednesday, a correction arrives — that reading really belonged in bucket nine. On Friday, two people ask about that same hour, and the system gives two equally honest answers. "As of Monday, it was in bucket four" — that's what you saw when you decided. "As of now, it's in bucket nine" — that's what's true today. And it can show you the exact pair of notes, time-stamped Wednesday, that account for the difference. Nothing was overwritten. The Monday note is still there. That is what it means for a system to be able to defend a decision rather than merely report a current number.
+
+## Lateness is a question, not a folder
+
+There's one more design choice worth calling out, because the tempting wrong turn here is common. When you start thinking about late data, it's natural to want to sort it into folders: a folder for "arrived within an hour," another for "arrived within a day," another for "arrived within a week." It feels organized. But it's a trap, because those folders are defined relative to *now*, and now keeps moving — so a reading would have to keep migrating from one folder to the next as time passes, and the boundaries would shift under your feet forever.
+
+The cleaner way is to not sort at all. Keep every note in one pile, and treat "how late was this?" as a simple piece of arithmetic you do at the moment you ask — just subtract the valid time from the transaction time. "Everything that arrived within an hour of its hour" becomes a question you ask of the one pile, not a folder you maintain. The common questions — what did the picture look like using only the first hour of data, or the first day, or the first week — become filters applied on the fly. One honest pile; lateness computed, never filed. The store stays simple and nothing ever has to move.
+
+That's the bitemporal fact: two clocks on every record, one for when the measurement was true and one for when the system learned it; an append-only pile that never erases; the past reconstructable from any instant by choosing which notes to count; late data and corrections folded in by adding compensating notes rather than overwriting; and lateness treated as arithmetic on the two clocks rather than a filing system. It's the difference between a system that can prove what it knew and when, and one that can only ever shrug and show you the latest number.
+
+*(Next: the moments and entropy — how those stored counts are turned into the handful of numbers that fingerprint a distribution, the statistics the whole system reads its judgments from.)*
