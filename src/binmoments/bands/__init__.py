@@ -1,5 +1,9 @@
-"""Static value-band classification (Nominal / Elevated / Warning / Critical).
+"""Static value-band classification.
 
-See ADR-017. The general user-composed rule engine is fenced as designed-for; only the
-static band classification is built here.
+See ADR-017. Fixed Nominal/Elevated/Warning/Critical bands that compose with the histogram
+(band occupancy read from bin counts). A general user-composed rule engine is fenced for later.
 """
+
+from .scheme import BandScheme
+
+__all__ = ["BandScheme"]
