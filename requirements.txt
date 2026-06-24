@@ -1,14 +1,13 @@
 # Local development & testing dependencies.
-# These let you run and test the binmoments package on your machine with plain
-# PySpark — no Databricks cluster needed for the unit/logic tests.
+# The binmoments package is pure Python (numpy), so you can run and test it on
+# your machine with no Spark and no Databricks cluster — `pip install -e .` then
+# `pytest`. Spark lives only in the notebooks; the package never imports it.
 #
-# NOTE on databricks-connect: do NOT pin it here. When you wire up Databricks
-# execution later, install a databricks-connect version that MATCHES your
-# pyspark install in the same environment causes conflicts.
+# NOTE: do NOT pin pyspark or databricks-connect here. Databricks serverless
+# already provides PySpark; a local copy that does not match the runtime causes
+# conflicts. The package's storage-agnostic logic doesn't need either.
 
 numpy>=1.26
-pandas>=2.0
-scipy>=1.11
 pyyaml>=6.0
 pytest>=8.0
 ruff>=0.5

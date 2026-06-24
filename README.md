@@ -1,91 +1,75 @@
 # BinMoments
 
-**Real-Time Distribution Fingerprinting and Anomaly Detection for IoT Streams**
+**Real-Time Distribution Fingerprinting & Anomaly Detection for IoT Streams**
 
-An architecture-led platform that summarizes each IoT sensor channel as a streaming,
-bitemporal histogram, derives statistical moments and entropy from it, and detects when an
-instrument drifts from its own normal — using distribution distance rather than threshold
-banding. Built Databricks-native (Structured Streaming, Delta, Unity Catalog).
-
-> **Status: in progress.** The architecture is complete and recorded as ADRs (see
-> `docs/adr/`); implementation is being built as a thin vertical slice first. This README
-> describes the design; the code is being filled in behind it.
-
-> **Authorship.** The architecture, data-platform design, and all engineering decisions are
-> the author's own. The implementation is AI-assisted — code generated against the documented
-> architecture and decisions. The project's intent is to demonstrate data-architecture
-> thinking: the design, the trade-offs, and the recorded reasoning. The ADRs are the point;
-> the code is the proof.
+BinMoments summarizes each IoT sensor channel as a streaming, bitemporal histogram, reads *exact* statistical moments and entropy from it, and detects when an instrument drifts from its own normal — by distribution distance, not static thresholds. It is built Databricks-native (Delta, serverless Spark, Unity Catalog), while keeping all analytical logic as plain, storage-agnostic Python.
 
 ---
 
-## The problem
+## Validated on Databricks
 
-A fleet of IoT instruments emits floods of measurements. The operational question is rarely
-"what is the latest value" but "is this instrument's *behaviour* changing — and can I prove
-what I knew when I made a decision?" Answering that needs three things most pipelines skip:
-a faithful statistical summary at controlled accuracy, reproducibility of past state under
-late-arriving data and corrections, and a drift signal that catches distributional change a
-static threshold misses.
+Given a 28-day temperature stream with a drift fault **injected on three days and hidden from the detector**, the detector — calibrated only on clean data — caught all three drift days and raised zero false alarms. The run *asserts* this, so it fails loudly if the claim ever breaks.
 
-## The idea
+```
+date         distance  verdict       injected?
+-----------  --------  -----------   ---------
+2024-06-26    0.570  normal
+2024-06-27    3.345  ** DRIFT **   yes
+2024-06-28    3.357  ** DRIFT **   yes
+2024-06-29    3.313  ** DRIFT **   yes
+2024-06-30    0.656  normal
 
-Each scalar **channel** of a measurement (a tensor decomposed into magnitude + direction, so
-scalars, vectors, and tensors all reduce to scalar channels) is summarized per instrument-hour
-as a **variable-width, equal-mass histogram**. From those bins the system derives moments,
-entropy, and percentiles; stores increments in an **append-only bitemporal fact** (valid time
-vs. transaction time) so any past state is reproducible; and detects **drift** by Wasserstein
-distance between an instrument's current distribution and a baseline of its own past.
+injected drift days caught: 3/3     false alarms: 0
+VALIDATED on Databricks: every injected drift day caught, zero false alarms.
+```
 
-## Signature decisions
+Because the anomaly is injected by a simulator that keeps the ground truth *separate* from the data, "it works" is a measured result, not a claim. You can reproduce it yourself — see **[docs/RUNBOOK.md](docs/RUNBOOK.md)** (a one-minute local check with `pytest`, or the full Databricks run).
 
-A few of the most consequential; the full set is in [`docs/adr/`](docs/adr/).
+---
 
-- **Variable-width, equal-mass bins** (ADR-002) — resolution follows the data, so tail
-  percentiles and anomalies are well resolved; fixed-width binning is rejected.
-- **Frozen, versioned bin schemas** (ADR-003) — data-derived edges are pinned per
-  `bin_schema_id`; counts never merge across versions, the same provenance discipline applied
-  to embeddings in the companion project.
-- **Bitemporal increment fact** (ADR-004) — append-only signed deltas with valid and
-  transaction time; late data and corrections never overwrite history, so "what I saw
-  yesterday, and how it changed" is a first-class query.
-- **Wasserstein drift, cosine rejected** (ADR-005) — distributions are compared directly;
-  a hand-crafted moment vector with cosine distance is rejected because it conflates a level
-  shift with a shape change.
-- **Cross-schema comparison by CDF resampling** (ADR-016) — year-over-year comparison across a
-  schema refit resamples both CDFs onto a common grid, so comparison is enabled without ever
-  merging counts across versions.
-- **Moments from bins, with a generalized Sheppard correction** (ADR-006) — the histogram is
-  the single source of truth; grouped-moment bias is corrected with a mass-weighted, variable-
-  width generalization of Sheppard's corrections.
+## How it works, in one breath
 
-## Architecture overview
+Each scalar **channel** of a measurement is summarized per instrument-hour as a **variable-width, equal-mass histogram** (resolution follows the data). **Exact moments** (mean, variance, skewness, kurtosis) come from additive **power sums**; **percentiles and entropy** come from the bins. Increments are stored in an **append-only bitemporal fact** (valid time vs. transaction time), so any past state is reproducible under late data and corrections. **Drift** is detected by **Wasserstein distance** between an instrument's current distribution and a baseline of its own past, with a **self-calibrated** threshold per instrument.
 
-Sources -> **Bronze** (raw landing, identity, idempotency) -> **Silver** (parse, normalize to
-channels, resolve late data/corrections to signed deltas) -> **Gold** (bitemporal binned
-increment fact, moment/entropy materializations, drift signals). Reference data — the
-instrument registry with geodetic location (datum + epoch) and labels — joins in silver.
-See ADR-009 (layering), ADR-007 (registry), ADR-010 (platform).
+---
+
+## Design & reasoning
+
+The decisions are the point; the code is the proof. Depth lives in three registers:
+
+- **[docs/adr/](docs/adr/)** — the Architecture Decision Records: every decision, its alternatives, and its consequences (including decisions the build *reversed* on evidence).
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — a fuller technical overview of the system and its signature decisions.
+- **[docs/book/](docs/book/)** — a narrative, listen-while-walking walkthrough of the whole system, chapter by chapter.
+- **docs/companion/** — the mathematical companion (the project's origin: it started from the math). *Written last, on purpose.*
+
+---
+
+## A deliberate companion to LogLens
+
+This is the second of a deliberately contrasting pair. [LogLens](https://github.com/solar-mkd/ai-log-intelligence-platform) is built to be **platform-agnostic**; BinMoments is built to be **platform-native** (Databricks). The pairing is the point: it demonstrates judgment about *when* to embrace a platform and when to stay portable — and BinMoments keeps that honest by quarantining all analytical logic in storage-agnostic Python, with the platform-specific code confined to thin notebooks.
+
+---
 
 ## Repository layout
 
 ```
-docs/adr/        Architecture Decision Records (the design)
-docs/companion/  Companion document & math appendices (Sheppard derivation, precision proof)
-src/binmoments/  The package — all logic, plain testable PySpark
-notebooks/       Thin Databricks entry points that import the package
-tests/           Local tests (run with pytest, no cluster needed)
-config/          Per-instrument config (template committed; real config git-ignored)
+docs/adr/         Architecture Decision Records (the design)
+docs/book/        Narrative walkthrough, chapter by chapter
+docs/companion/   Mathematical companion & appendices (the math origin) — in progress
+docs/RUNBOOK.md   How to run and verify, locally or on Databricks
+src/binmoments/   The package — all analytical logic, plain testable Python (numpy)
+notebooks/        Thin Databricks entry points that import the package
+tests/            Local tests (run with pytest, no cluster needed)
 ```
 
-## Getting started
+---
 
-See [`docs/SETUP.md`](docs/SETUP.md). In short: create a venv, `pip install -r requirements.txt`
-and `pip install -e .`, then `pytest`.
+## Authorship
 
-## Designed-for, not built
+The architecture, data-platform design, and all engineering decisions are the author's own. The implementation is AI-assisted — code generated against the documented architecture and decisions. The project's intent is to demonstrate data-architecture thinking: the design, the trade-offs, and the recorded reasoning. The ADRs are the point; the code is the proof.
 
-Deliberately fenced as future extensions, with their designs recorded: forecasting on the
-fingerprint (ADR-012), cross-measurement correlation mining (ADR-013), cross-instrument
-similarity & vector search (ADR-014), rank-2 tensor support (ADR-015), and a general
-user-composed rule engine (ADR-017). Fencing these is a scope decision, not an omission.
+---
+
+## Status
+
+The temperature vertical slice is **built, tested (50+ tests), and validated end-to-end on Databricks Free Edition** — including the drift detection above and the as-of reproducibility of the bitemporal fact. Future channels and capabilities are deliberately fenced as designed-for ADRs (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)); drawing that line is a scope decision, not an omission.
