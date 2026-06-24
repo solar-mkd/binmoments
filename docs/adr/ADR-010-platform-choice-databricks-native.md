@@ -21,7 +21,7 @@ BinMoments is, by deliberate design, the **platform-native** counterpart to LogL
    - **Unity Catalog** gives native lineage and governance — directly serving the reproducibility and audit story (ADR-004) and the governed instrument metadata (ADR-007).
    - **One platform** for streaming + batch + ML (the forecasting extension, ADR-012) + BI reduces the integration surface to near zero.
 
-**3. The analytical logic stays platform-agnostic where it costs nothing to do so.** Bins, moments, and drift are pure PySpark/Python computations; the *reasoning* remains portable even though the *deployment* is Databricks-native. Native where it pays (streaming, storage, governance), agnostic in the pure logic.
+**3. The analytical logic stays platform-agnostic where it costs nothing to do so. Bins, moments, and drift are pure Python (numpy) computations with no Spark dependency; the reasoning remains portable even though the deployment is Databricks-native. Native where it pays (streaming, storage, governance), agnostic in the pure logic.
 
 ## Alternatives considered
 
