@@ -58,7 +58,7 @@ Two further forces shape the method. First, the histogram is a **statistical est
 - Bin count is chosen against the smallest comparison window's count, not pushed high because compute allows it; fine resolution is spent only where the counts justify it.
 - Circular channels (per ADR-001) require wrap-around bin topology; the method accommodates it, but the circular binning implementation is deferred with the circular-statistics implementation until the first circular channel (wind bearing).
 
-**Coupling to later decisions.** The frozen artifact this ADR produces (edges + value-axis transform) is versioned and governed by ADR-003. The drift metric (Wasserstein over channel histograms) reads these bins and depends on mass normalization at comparison time and on the fixed value axis defined here. The moments/entropy computation reads the same bins (with Sheppard's correction for the binning bias, handled in its own ADR).
+**Coupling to later decisions.** The frozen artifact this ADR produces (edges + value-axis transform) is versioned and governed by ADR-003. The drift metric (Wasserstein over channel histograms) reads these bins and depends on mass normalization at comparison time and on the fixed value axis defined here. The entropy and percentile computations read these bins (ADR-006). Moments are not read from these bins — ADR-006 (revised) computes them exactly from additive power sums instead, after numerical validation showed bin-midpoint moments are biased on equal-mass bins.
 
 ---
 
