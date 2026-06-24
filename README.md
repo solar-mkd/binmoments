@@ -2,7 +2,9 @@
 
 **Real-Time Distribution Fingerprinting & Anomaly Detection for IoT Streams**
 
-BinMoments summarizes each IoT sensor channel as a streaming, bitemporal histogram, reads *exact* statistical moments and entropy from it, and detects when an instrument drifts from its own normal — by distribution distance, not static thresholds. It is built Databricks-native (Delta, serverless Spark, Unity Catalog), while keeping all analytical logic as plain, storage-agnostic Python.
+BinMoments models any sensor measurement — scalar, vector, or tensor — as a set of scalar **channels**, summarizes each channel as a streaming, bitemporal histogram, reads *exact* statistical moments and entropy from it, and detects when an instrument drifts from its own normal — by distribution distance, not static thresholds. It is built Databricks-native (Delta, serverless Spark, Unity Catalog), while keeping all analytical logic as plain, storage-agnostic Python.
+
+The data model captures scalar, vector, and tensor measurements uniformly; the current slice computes on scalar channels, with vector and tensor handling fenced as recorded extensions.
 
 ---
 
@@ -33,6 +35,12 @@ Each scalar **channel** of a measurement is summarized per instrument-hour as a 
 
 ---
 
+## Everything is incremental
+
+No statistic is ever recomputed from scratch. Each arriving measurement *adds* to a small set of running totals — the power sums behind the moments, and the histogram bin counts behind percentiles and entropy. Both are **additive**: combining two periods is just adding their totals. So a fingerprint for an arbitrary window — a day, a month, a full year — is assembled by summing the relevant increments, never by re-reading the raw data. The same additivity that makes this cheap is also what lets the work distribute across a cluster and reconstruct any past state (see the [mathematical companion](docs/companion/) for the proof).
+
+---
+
 ## Design & reasoning
 
 The decisions are the point; the code is the proof. Depth lives in three registers:
@@ -40,7 +48,7 @@ The decisions are the point; the code is the proof. Depth lives in three registe
 - **[docs/adr/](docs/adr/)** — the Architecture Decision Records: every decision, its alternatives, and its consequences (including decisions the build *reversed* on evidence).
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — a fuller technical overview of the system and its signature decisions.
 - **[docs/book/](docs/book/)** — a narrative, listen-while-walking walkthrough of the whole system, chapter by chapter.
-- **docs/companion/** — the mathematical companion (the project's origin: it started from the math). *Written last, on purpose.*
+- **[docs/companion/](docs/companion/)** — the mathematical companion (the project's origin: it started from the math). *Written last, on purpose.*
 
 ---
 
@@ -55,7 +63,7 @@ This is the second of a deliberately contrasting pair. [LogLens](https://github.
 ```
 docs/adr/         Architecture Decision Records (the design)
 docs/book/        Narrative walkthrough, chapter by chapter
-docs/companion/   Mathematical companion & appendices (the math origin) — in progress
+docs/companion/   Mathematical companion (Math-Companion-to-BinMoments) — the math origin
 docs/RUNBOOK.md   How to run and verify, locally or on Databricks
 src/binmoments/   The package — all analytical logic, plain testable Python (numpy)
 notebooks/        Thin Databricks entry points that import the package
