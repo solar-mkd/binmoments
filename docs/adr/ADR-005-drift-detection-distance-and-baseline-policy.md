@@ -62,6 +62,8 @@ A second concern is **seasonality**. Temperature and most environmental quantiti
 
 **Coupling to other decisions.** Reads the histograms and fixed value axis of ADR-002, stays within one schema version per ADR-003, and compares as-of-consistent snapshots per ADR-004. The drift signal it produces is the primary input to whatever alerting/forecasting layers are fenced as designed-for elsewhere.
 
+The analytical moments run as Spark-native aggregations (count, sum(value^k)) that distribute across partitions and combine across them — feasible because the power sums were chosen additive (ADR-006). This was validated by computing the moments both as a single-machine reference and as a distributed Spark aggregation over the same Delta table and confirming the fingerprints match to floating-point precision. The same additivity that gives bitemporal reproducibility (ADR-004) gives distribution for free; the binning counts distribute by the identical principle (implementation deferred — see below).
+
 ---
 
 *Authorship: architecture and all design decisions by the author. Implementation is AI-assisted — code generated against the documented architecture and decisions. This ADR records the reasoning; the code is the proof.*
