@@ -49,6 +49,7 @@ The decisions are the point; the code is the proof. Depth lives in three registe
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — a fuller technical overview of the system and its signature decisions.
 - **[docs/book/](docs/book/)** — a narrative, listen-while-walking walkthrough of the whole system, chapter by chapter.
 - **[docs/companion/](docs/companion/)** — the mathematical companion (the project's origin: it started from the math). *Written last, on purpose.*
+- **[docs/production/](docs/production/)** — production-readiness: how the architecture is designed to meet SLA, recovery (RPO/RTO, DR), governance, and audit obligations — proven where proven, intended where intended.
 
 ---
 
@@ -64,6 +65,7 @@ This is the second of a deliberately contrasting pair. [LogLens](https://github.
 docs/adr/         Architecture Decision Records (the design)
 docs/book/        Narrative walkthrough, chapter by chapter
 docs/companion/   Mathematical companion (Math-Companion-to-BinMoments) — the math origin
+docs/production/  Production-readiness: SLA, RPO/RTO, DR, governance, auditability
 docs/RUNBOOK.md   How to run and verify, locally or on Databricks
 src/binmoments/   The package — all analytical logic, plain testable Python (numpy)
 notebooks/        Thin Databricks entry points that import the package
