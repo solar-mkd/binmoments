@@ -4,10 +4,8 @@
 #
 # NOTE on databricks-connect: do NOT pin it here. When you wire up Databricks
 # execution later, install a databricks-connect version that MATCHES your
-# Free Edition serverless runtime (see docs/SETUP.md). Mixing it with a local
 # pyspark install in the same environment causes conflicts.
 
-pyspark>=3.5,<3.6
 numpy>=1.26
 pandas>=2.0
 scipy>=1.11
