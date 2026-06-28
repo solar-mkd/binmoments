@@ -39,6 +39,8 @@ BinMoments is, by deliberate design, the **platform-native** counterpart to LogL
 
 **Scope discipline (over-engineering guard).** Use the native features that pay their way (Structured Streaming, Delta, Unity Catalog). Do **not** reach for Databricks features for their own sake — notably, Vector Search is *not* adopted, because ADR-005 already established the core needs no vector store.
 
+**The increment fact and the gold layers are materialized** on-platform by assigning bins with the validated package logic on the driver (Option A) and writing the result to Delta. This makes the medallion (bronze → silver → gold) inspectable as real tables and feeds the current-state read model (ADR-020), without un-fencing distributed bin assignment, which remains designed-for.
+
 ---
 
 *Authorship: architecture and all design decisions by the author. Implementation is AI-assisted. This ADR records the reasoning; the code is the proof.*
