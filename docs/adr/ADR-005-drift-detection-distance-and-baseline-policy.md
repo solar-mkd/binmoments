@@ -64,6 +64,14 @@ A second concern is **seasonality**. Temperature and most environmental quantiti
 
 The analytical moments run as Spark-native aggregations (count, sum(value^k)) that distribute across partitions and combine across them — feasible because the power sums were chosen additive (ADR-006). This was validated by computing the moments both as a single-machine reference and as a distributed Spark aggregation over the same Delta table and confirming the fingerprints match to floating-point precision. The same additivity that gives bitemporal reproducibility (ADR-004) gives distribution for free; the binning counts distribute by the identical principle (implementation deferred — see below).
 
+## Validation note (seasonality — confirming decision 3)
+
+A simulation over a 90-day spring-to-summer span, scored with the vertical-slice notebook's **simplified** baseline — calibrate on the first 28 days and compare every later day against that fixed early-season reference — flagged 21 consecutive normal summer days as drift, their distances rising smoothly with the season, while *missing* a small injected fault that the inflated, season-contaminated threshold swamped. This is precisely the failure this ADR's Context anticipates and decision 3 is written to prevent: comparing a later season against an earlier-season baseline reads normal cyclic warming as drift.
+
+The point of recording it is that **the fix is not new logic — it is the baseline already decided here.** A `same_hour_yesterday` or seasonal `historical_reference` baseline (decision 3) differences out the cycle, so normal seasonal warming lands near its seasonal reference and does not fire. The slice notebook implements only the simplest fixed baseline; that is a deliberate simplification of the *demonstration*, not the recommended policy, and running it across seasons reproduces the exact alarm-storm the seasonal baseline exists to avoid.
+
+The vertical slice therefore validates injected faults on a short **in-season** window, where the fixed baseline is adequate and the injected fault is the only large distribution change; the seasonal baseline of decision 3 remains the specified mechanism for any multi-season deployment, and is **designed, not yet built** in the slice. This is an instance of a decision validated by *reproducing the failure it prevents* — the empirical detail (this run and the other injected-fault scenarios) is collected in the experiment log, `docs/experiments/simulation-results.md`.
+
 ---
 
 *Authorship: architecture and all design decisions by the author. Implementation is AI-assisted — code generated against the documented architecture and decisions. This ADR records the reasoning; the code is the proof.*
