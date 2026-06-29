@@ -181,12 +181,61 @@ print("VALIDATED on Databricks: every injected drift day caught, zero false alar
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ### Schema table + plottable view
+# MAGIC Persist the bin **edges** (so a histogram is self-describing and plottable), and create a
+# MAGIC view that returns, per (instrument, event_hour), every bin with its edges and a **zero-filled**
+# MAGIC count -- ready to plot.
+
+# COMMAND ----------
+
+from binmoments.serving import schema_edge_rows
+
+SCHEMA_TBL = f"{CATALOG}.{SCHEMA}.bin_schema"
+PLOT_VIEW  = f"{CATALOG}.{SCHEMA}.histogram_plot"
+
+edge_rows = [(schema.schema_id, b, lo, hi, mid) for (b, lo, hi, mid) in schema_edge_rows(schema)]
+schema_tbl_schema = StructType([
+    StructField("bin_schema_id", StringType()), StructField("bin_index", IntegerType()),
+    StructField("lower_edge", DoubleType()), StructField("upper_edge", DoubleType()),
+    StructField("midpoint", DoubleType()),
+])
+spark.createDataFrame(edge_rows, schema_tbl_schema) \
+     .write.format("delta").mode("overwrite").saveAsTable(SCHEMA_TBL)
+print(f"schema  {SCHEMA_TBL}: {spark.table(SCHEMA_TBL).count()} bins")
+
+# Plottable view: every bin (with edges) for every (instrument, hour), empty bins as 0.
+spark.sql(f"""
+    CREATE OR REPLACE VIEW {PLOT_VIEW} AS
+    WITH hours AS (
+        SELECT DISTINCT instrument_id, bin_schema_id, event_hour FROM {HIST}
+    ),
+    grid AS (
+        SELECT h.instrument_id, h.event_hour, s.bin_schema_id, s.bin_index,
+               s.lower_edge, s.upper_edge, s.midpoint
+        FROM hours h JOIN {SCHEMA_TBL} s ON h.bin_schema_id = s.bin_schema_id
+    )
+    SELECT g.instrument_id, g.event_hour, g.bin_index,
+           g.lower_edge, g.upper_edge, g.midpoint,
+           COALESCE(x.count, 0.0) AS count
+    FROM grid g
+    LEFT JOIN {HIST} x
+      ON  g.instrument_id = x.instrument_id
+      AND g.bin_schema_id = x.bin_schema_id
+      AND g.event_hour    = x.event_hour
+      AND g.bin_index     = x.bin_index
+""")
+print(f"view    {PLOT_VIEW} created (edges + zero-filled counts, ready to plot)")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ### The medallion, now browsable
 
 # COMMAND ----------
 
-for t in [BRONZE, FACT, HIST, FINGERPRINTS]:
+for t in [BRONZE, FACT, HIST, FINGERPRINTS, SCHEMA_TBL]:
     print(f"{t}: {spark.table(t).count()} rows")
+print(f"{PLOT_VIEW}: view (per-hour histogram with edges, zero-filled)")
 
 print("\nsample of gold fingerprints (watch the mean rise on the injected drift days):")
 (spark.table(FINGERPRINTS)
