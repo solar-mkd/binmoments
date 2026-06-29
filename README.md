@@ -10,22 +10,20 @@ The data model captures scalar, vector, and tensor measurements uniformly; the c
 
 ## Validated on Databricks
 
-Given a 28-day temperature stream with a drift fault **injected on three days and hidden from the detector**, the detector — calibrated only on clean data — caught all three drift days and raised zero false alarms. The run *asserts* this, so it fails loudly if the claim ever breaks.
+Given a temperature stream with a drift fault **injected on three days and hidden from the detector**, the detector — calibrated only on clean data — catches all three drift days and raises zero false alarms:
 
 ```
 date         distance  verdict       injected?
 -----------  --------  -----------   ---------
-2024-06-26    0.570  normal
-2024-06-27    3.345  ** DRIFT **   yes
-2024-06-28    3.357  ** DRIFT **   yes
-2024-06-29    3.313  ** DRIFT **   yes
-2024-06-30    0.656  normal
+2024-06-27    2.791  ** DRIFT **   yes
+2024-06-28    2.804  ** DRIFT **   yes
+2024-06-29    2.767  ** DRIFT **   yes
+... and 0 other scored days: all normal
 
-injected drift days caught: 3/3     false alarms: 0
-VALIDATED on Databricks: every injected drift day caught, zero false alarms.
+injected days caught: 3/3  (recall 100%)     false alarms: 0
 ```
 
-Because the anomaly is injected by a simulator that keeps the ground truth *separate* from the data, "it works" is a measured result, not a claim. You can reproduce it yourself — see **[docs/RUNBOOK.md](docs/RUNBOOK.md)** (a one-minute local check with `pytest`, or the full Databricks run).
+Because the anomaly is injected by a simulator that keeps the ground truth *separate* from the data, "it works" is a measured result, not a claim. The pipeline can assert it (a `STRICT` flag fails the run loudly if the claim ever breaks), and a scenario switcher reproduces the detector's whole operating range — clean detection, signal scaling with severity, the detection floor, the variance soft spot, and the seasonality failure mode — all measured in **[docs/experiments/](docs/experiments/simulation-results.md)**. Reproduce any of it yourself via **[docs/RUNBOOK.md](docs/RUNBOOK.md)** (a one-minute local check with `pytest`, or the full Databricks run).
 
 ---
 
@@ -43,10 +41,11 @@ No statistic is ever recomputed from scratch. Each arriving measurement *adds* t
 
 ## Design & reasoning
 
-The decisions are the point; the code is the proof. Depth lives in three registers:
+The decisions are the point; the code is the proof. Depth lives in several registers:
 
-- **[docs/adr/](docs/adr/)** — the Architecture Decision Records: every decision, its alternatives, and its consequences (including decisions the build *reversed* on evidence).
+- **[docs/adr/](docs/adr/)** — the Architecture Decision Records: every decision, its alternatives, and its consequences (including decisions the build *reversed* on evidence, and one *confirmed* by reproducing the failure it prevents).
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — a fuller technical overview of the system and its signature decisions.
+- **[docs/experiments/](docs/experiments/simulation-results.md)** — the detector characterized across scenarios: what it catches, how the signal scales, and where (and why) it does not.
 - **[docs/book/](docs/book/)** — a narrative, listen-while-walking walkthrough of the whole system, chapter by chapter.
 - **[docs/companion/](docs/companion/)** — the mathematical companion (the project's origin: it started from the math). *Written last, on purpose.*
 - **[docs/production/](docs/production/)** — production-readiness: how the architecture is designed to meet SLA, recovery (RPO/RTO, DR), governance, and audit obligations — proven where proven, intended where intended.
@@ -66,6 +65,7 @@ docs/adr/         Architecture Decision Records (the design)
 docs/book/        Narrative walkthrough, chapter by chapter
 docs/companion/   Mathematical companion (Math-Companion-to-BinMoments) — the math origin
 docs/production/  Production-readiness: SLA, RPO/RTO, DR, governance, auditability
+docs/experiments/ Simulation results: the detector characterized across scenarios
 docs/RUNBOOK.md   How to run and verify, locally or on Databricks
 src/binmoments/   The package — all analytical logic, plain testable Python (numpy)
 notebooks/        Thin Databricks entry points that import the package
@@ -82,4 +82,4 @@ The architecture, data-platform design, and all engineering decisions are the au
 
 ## Status
 
-The temperature vertical slice is **built, tested (50+ tests), and validated end-to-end on Databricks Free Edition** — including the drift detection above and the as-of reproducibility of the bitemporal fact. Future channels and capabilities are deliberately fenced as designed-for ADRs (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)); drawing that line is a scope decision, not an omission.
+The temperature vertical slice is **built, tested (60+ tests), and validated end-to-end on Databricks Free Edition** — including the drift detection above, the as-of reproducibility of the bitemporal fact, and the materialized current-state read model. The detector is characterized across its full operating range in [docs/experiments/](docs/experiments/simulation-results.md). Future channels and capabilities are deliberately fenced as designed-for ADRs (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)); drawing that line is a scope decision, not an omission.

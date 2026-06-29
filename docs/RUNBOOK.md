@@ -8,11 +8,10 @@ Databricks. Both use the same code and the same ground-truth simulator.
 
 ## What you are verifying
 
-The simulator generates realistic sensor data and **injects a known fault** (a temperature drift)
-into the readings, while keeping a separate ground-truth log. The detector then runs on the
-readings **alone** and must rediscover the fault — flagging the right window and staying quiet
-everywhere else. Because the truth is known and hidden from the detector, "it works" is a measured
-result, not a claim.
+The simulator generates realistic sensor data and **injects a known fault** into the readings, while
+keeping a separate ground-truth log. The detector then runs on the readings **alone** and must
+rediscover the fault — flagging the right window and staying quiet everywhere else. Because the
+truth is known and hidden from the detector, "it works" is a measured result, not a claim.
 
 ---
 
@@ -29,17 +28,12 @@ pip install pytest
 pytest -q
 ```
 
-You should see the full suite pass (50+ tests). The ones that prove the headline are in
-`tests/test_drift.py` — in particular `test_end_to_end_mean_shift_caught_with_no_false_alarms`,
-which injects a known drift, runs the detector blind, and asserts it caught every injected day with
-zero false alarms. The moments-reversal and bitemporal guarantees are likewise pinned by tests in
-`tests/test_moments.py` and `tests/test_fact.py`.
-
-To watch the detection happen with a readable readout rather than a pass/fail:
-
-```bash
-python -c "from tests.test_drift import *"   # or open tests/test_drift.py to see the scenario
-```
+You should see the full suite pass (60+ tests). Among them: the end-to-end drift test injects a
+known mean-shift, runs the detector blind, and asserts it caught every injected day with zero false
+alarms; the moments tests pin the power-sum exactness (including a guard against the reversed
+bin-midpoint method); the bitemporal-fact tests pin as-of reproducibility under corrections; and the
+serving tests prove the current-state read model equals a full rebuild from the fact. Browse the
+`tests/` folder to see each scenario.
 
 ---
 
@@ -66,38 +60,68 @@ CREATE SCHEMA IF NOT EXISTS workspace.binmoments;
 ```
 
 ### 4. Run the notebooks
-Inside the Git folder, open `notebooks/` and run, **in order**:
+Inside the Git folder, open `notebooks/` and run, **in order**, connecting each to **Serverless**
+(top-right) and choosing **Run all**:
 
-1. **`01_ingest_bronze`** — connect to **Serverless** (top-right), then **Run all**. It simulates
-   28 days with a hidden drift on 27-29 June and writes `workspace.binmoments.bronze_readings`.
-2. **`02_fingerprint_and_drift`** — **Run all**. It reads the bronze table, computes the
-   distributed moments, calibrates the detector on the clean reference days, and scores the rest.
+1. **`05_reset`** — drops any existing tables/views for a clean slate (everything is regenerable).
+2. **`01_ingest_bronze`** — simulates the stream for the active scenario and writes
+   `bronze_readings` plus a separate `ground_truth` table. Switch scenarios by changing the single
+   `SCENARIO = "A"` line (see below); the default `A` is the canonical clean detection.
+3. **`02_fingerprint_and_drift`** — builds the medallion (silver `increment_fact`; gold `histogram`,
+   `fingerprints`, `bin_schema`; view `histogram_plot`), runs the distributed moments, and scores
+   drift against the `ground_truth` table — so it adapts to whichever scenario is active.
+4. **`03_materialize_current_state`** — maintains the current-state read model by `MERGE` and asserts
+   it equals a full rebuild from the fact.
+5. **`04_plot_histogram`** — plots the histograms, including a clean-vs-drift overlay that auto-picks
+   its hours from the ground truth, so the fault is visible (a shift, or a widening for variance).
 
-`00_setup` is run automatically by the other two (via `%run`); you do not run it directly.
+`00_setup` is run automatically by the others (via `%run`); you do not run it directly.
 
 ### 5. What success looks like
-The final cell of `02` prints a per-day table and ends with:
+The drift cell of `02` prints a per-day table and a summary:
 
 ```
-injected drift days caught: 3/3     false alarms: 0
-VALIDATED on Databricks: every injected drift day caught, zero false alarms.
+injected days caught: 3/3  (recall 100%)     false alarms: 0
 ```
 
-The notebook **asserts** this, so if the detector ever failed to match the ground truth, the run
-would error rather than pass quietly.
+By default `02` runs in reporting mode (it prints the verdict). Set `STRICT = True` at the top of
+`02` for the canonical mean-shift scenario to additionally **assert** the result — the run then
+errors rather than passing quietly if detection ever fails to match the ground truth. Notebook `03`
+asserts its current-state consistency unconditionally.
+
+---
+
+## Explore the detector's whole range (the scenario switcher)
+
+`01_ingest_bronze` has a `SCENARIO` selector. Change the one line `SCENARIO = "A"` to any of:
+
+- **A** — mean shift +3 degC → clean detection (3/3, no false alarms).
+- **B** — mean shift +8 degC → the drift *distance* scales up with the magnitude.
+- **C** — two faults of different size → both caught and ranked by severity.
+- **D** — variance ×3, mean unchanged → the **soft spot**: a mean-monitor sees nothing, and the
+  daily Wasserstein stays quiet (the change is in the fingerprint's variance component; the
+  variance-moment and Mahalanobis signals that would flag it are designed-for, ADR-005).
+- **E** — mean shift +1 degC → below the self-calibrated threshold: the **detection floor**, correctly not chased.
+- **S** — +3 degC on a 90-day spring→summer window → the **seasonality confound**: a fixed baseline
+  reads normal seasonal warming as drift, reproducing the failure the seasonal baseline (ADR-005)
+  prevents.
+
+After switching, re-run `05 → 01 → 02` (and `03`, `04`). The scoring follows the `ground_truth`
+table automatically — there is nothing to edit in `02`. Every one of these runs is recorded and
+explained in **[`docs/experiments/simulation-results.md`](experiments/simulation-results.md)**.
 
 ---
 
 ## How to convince yourself it is not rigged
 
-- The detector is calibrated **only** on the first 14 days and never sees which later days are
-  faulty — the injected window is not present in the stored data, only in the simulator's separate
-  ground-truth log.
-- Change the scenario in `01_ingest_bronze` — move the drift window, change its size, or add a
-  second one — re-run both notebooks, and watch the detector track the change. (You will also need
-  to update the expected window in `02` to match your edit.)
-- Set the drift magnitude to `0.0` (no real fault) and confirm the detector raises **no** alarms —
-  the other half of correctness: not crying wolf.
+- The detector is calibrated **only** on the leading clean days and never sees which later days are
+  faulty — the injected window is not in the stored readings, only in the separate `ground_truth`
+  table, which the detector's computation never reads (it is used only for scoring afterward).
+- Switch scenarios (above) and watch the verdict change: bigger faults give bigger distances (B),
+  multiple faults are each caught and ranked (C), a sub-threshold shift is correctly ignored (E),
+  and a fixed baseline across seasons fails exactly as the design predicts (S).
+- Set a scenario's magnitude to a tiny value and confirm the detector raises **no** alarms — the
+  other half of correctness: not crying wolf.
 
 ---
 

@@ -38,13 +38,19 @@ Each instrument-hour is summarized as a fingerprint vector: `[mean, variance, sk
 
 ## Drift detection and validation
 
-Drift is intra-instrument: each instrument is compared to its own past, never to a global standard or (yet) to its neighbours. The signal is the Wasserstein distance from the current window's distribution to a baseline distribution, against a self-calibrated threshold. A complementary signal — a change in the variance moment — catches pure dispersion changes that a daily Wasserstein comparison under-weights (the diurnal swing masks them); the two together see both *level* drift and *spread* drift.
+Drift is intra-instrument: each instrument is compared to its own past, never to a global standard or (yet) to its neighbours. The primary signal is the Wasserstein distance from the current window's distribution to a baseline distribution, against a self-calibrated threshold. This signal is excellent at **level** drift — a shift in where the mass sits — and reports it directly in the variable's units.
 
-Validation is by **ground truth**. The synthetic simulator (ADR-008) injects known faults — a mean shift over a known window — into the readings while keeping a separate ground-truth log. The detector runs on the readings alone and is scored on both halves: did it catch the injected drift (recall), and did it stay quiet on the clean stretches (precision). The end-to-end test, and the on-platform notebook, both confirm: every injected drift day caught, zero false alarms.
+A **pure spread change at a stable mean** (variance grows, centre fixed) is the primary signal's known soft spot: it transports little mass, so the daily Wasserstein stays quiet. This is a boundary, not a blind spot — the change is fully present in the **fingerprint** (its `variance` component moves even when `mean` does not), and two designed-for mechanisms read it there: a **complementary variance-moment signal** that watches the variance against its own normal, and the fenced **Mahalanobis second opinion** (ADR-005) that scores the whole fingerprint vector against the instrument's history and can say *which* moment moved. In the current slice these are designed-for, not wired into the daily detector, so pure-spread faults are detected by the fingerprint but not flagged by the slice's drift check. This is characterized empirically — caught level shifts, the detection floor, and the spread soft spot — in the [experiment log](experiments/simulation-results.md).
+
+Validation is by **ground truth**. The synthetic simulator (ADR-008) injects known faults into the readings while keeping a separate ground-truth log; the detector runs on the readings alone and is scored against that log — recall (did it catch the injected drift) and precision (did it stay quiet on clean stretches). Across the scenario suite the level-shift faults are caught with zero false alarms, the small sub-threshold shift is correctly not chased, the variance fault is the documented soft spot, and a fixed baseline run across seasons reproduces the seasonality failure the seasonal baseline (ADR-005) prevents — all recorded in the [experiment log](experiments/simulation-results.md).
 
 ## Scaling
 
 The analytical moments run as **Spark-native aggregations** (`count`, `sum(value^k)`) that distribute across partitions and combine across them — feasible *because* the power sums were chosen additive (ADR-006/ADR-010). This was validated by computing the moments both as a single-machine reference and as a distributed Spark aggregation over the same Delta table, and confirming the results match to floating-point precision. The same additivity that gives bitemporal reproducibility gives distribution for free; the binning counts distribute by the identical principle (implementation deferred — a deliberate scope line, not a gap).
+
+## Serving: materialized current state
+
+Reading the "current" histogram by summing the whole append-only fact on every query is wasteful at scale. A derived, rebuildable **current-state read model** (ADR-020) is maintained by Delta `MERGE` — collapsed to one net count per (instrument, schema, bin), including all corrections — so the latest distribution is a single keyed read. It is a cache, never a source of truth: it is always reconstructable from the fact, and a consistency check asserts the incrementally-maintained table equals a full rebuild. The per-hour `histogram` table serves the time-resolved view; both are derived projections alongside the unchanged write model (an event-sourcing / CQRS shape).
 
 ## Architecture overview
 
@@ -55,7 +61,9 @@ Sources → **Bronze** (raw landing, identity, idempotency) → **Silver** (pars
 ```
 docs/adr/         Architecture Decision Records (the design)
 docs/book/        Narrative walkthrough, chapter by chapter
-docs/companion/   Mathematical companion & appendices — in progress
+docs/companion/   Mathematical companion (Math-Companion-to-BinMoments) — the math origin
+docs/production/  Production-readiness: SLA, RPO/RTO, DR, governance, auditability
+docs/experiments/ Simulation results: the detector characterized across scenarios
 docs/RUNBOOK.md   How to run and verify, locally or on Databricks
 src/binmoments/   The package — all analytical logic, plain testable Python (numpy)
 notebooks/        Thin Databricks entry points that import the package
@@ -64,9 +72,9 @@ tests/            Local tests (run with pytest, no cluster needed)
 
 ## Built vs. designed-for
 
-**Built and validated** (the temperature vertical slice): the channel/measurement model (ADR-001), the ground-truth simulator (ADR-008), equal-mass binning (ADR-002/003), the bitemporal fact (ADR-004), the power-sum fingerprint (ADR-006), drift detection (ADR-005) with the cross-schema grid (ADR-016), and static value-band classification (ADR-017), all running on Databricks.
+**Built and validated** (the temperature vertical slice): the channel/measurement model (ADR-001), the ground-truth simulator (ADR-008), equal-mass binning (ADR-002/003), the bitemporal fact (ADR-004), the power-sum fingerprint (ADR-006), drift detection (ADR-005) with the cross-schema grid (ADR-016), static value-band classification (ADR-017), and the materialized current-state read model (ADR-020), all running on Databricks.
 
-**Designed-for, not built** — deliberately fenced as future extensions, with their designs recorded: forecasting on the fingerprint (ADR-012), cross-measurement correlation mining (ADR-013), cross-instrument similarity & vector search (ADR-014), rank-2 tensor support (ADR-015), spatial-coherence anomaly detection across nearby instruments (ADR-018), zero-inflated / heavy-tailed channels such as rainfall (ADR-019), and a general user-composed rule engine (the fenced half of ADR-017). Fencing these is a scope decision, not an omission — each is a captured idea with a trigger to build, not a vague aspiration.
+**Designed-for, not built** — deliberately fenced as future extensions, with their designs recorded: forecasting on the fingerprint (ADR-012), cross-measurement correlation mining (ADR-013), cross-instrument similarity & vector search (ADR-014), rank-2 tensor support (ADR-015), spatial-coherence anomaly detection across nearby instruments (ADR-018), zero-inflated / heavy-tailed channels such as rainfall (ADR-019), the complementary variance-moment and Mahalanobis drift signals (ADR-005), and a general user-composed rule engine (the fenced half of ADR-017). Fencing these is a scope decision, not an omission — each is a captured idea with a trigger to build, not a vague aspiration.
 
 ## A deliberate companion to LogLens
 
