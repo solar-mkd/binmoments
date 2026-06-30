@@ -89,10 +89,9 @@ print("frozen schema:", schema.schema_id)
 fact_rows, fp_rows = [], []
 for hour, g in pdf.groupby("event_hour"):
     vals = g["value"].tolist()
-    counts = schema.bin_counts(vals)
-    for b, c in enumerate(counts):
-        if c:
-            fact_rows.append((instrument_id, schema.schema_id, hour, int(b), float(c), INGEST_TIME))
+    counts = schema.bin_counts(vals)          # {bin_index: count} — sparse, only non-empty bins
+    for b, c in counts.items():               # b = bin_index, c = count (fix: was enumerate(counts))
+        fact_rows.append((instrument_id, schema.schema_id, hour, int(b), float(c), INGEST_TIME))
     fp = assemble_fingerprint(PowerSums.from_values(vals), counts, schema).vector()
     fp_rows.append((instrument_id, hour, schema.schema_id, *[float(x) for x in fp]))
 
