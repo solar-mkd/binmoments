@@ -27,7 +27,7 @@ GROUND_TRUTH = f"{CATALOG}.{SCHEMA}.ground_truth"
 gt = spark.table(GROUND_TRUTH).orderBy("start").toPandas()
 first_start = pd.to_datetime(gt["start"].iloc[0])
 DRIFT_HOUR = first_start.strftime("%Y-%m-%dT14")                       # 2pm on the first drift day
-CLEAN_HOUR = (first_start - pd.Timedelta(days=20)).strftime("%Y-%m-%dT14")  # 2pm, 20 days earlier
+CLEAN_HOUR = (first_start - pd.Timedelta(days=10)).strftime("%Y-%m-%dT14")  # 2pm, 20 days earlier
 SINGLE_HOUR = DRIFT_HOUR                                               # change to any 'YYYY-MM-DDTHH'
 print(f"fault kind: {gt['kind'].iloc[0]}   clean hour: {CLEAN_HOUR}   drift hour: {DRIFT_HOUR}")
 
